@@ -1,11 +1,9 @@
 const passport = require('passport');
 const passportJWT = require('passport-jwt');
 const jwt = require('jsonwebtoken');
+
 const express = require('express');
 const app = express();
-
-const ExtractJwt = passportJWT.ExtractJwt;
-const JwtStrategy = passportJWT.Strategy;
 
 const cors = require("cors");
 const dotenv = require("dotenv");
@@ -13,6 +11,10 @@ dotenv.config();
 const userService = require("./user-service.js");
 
 const HTTP_PORT = process.env.PORT || 8080;
+
+
+const ExtractJwt = passportJWT.ExtractJwt;
+const JwtStrategy = passportJWT.Strategy;
 
 const strategy = new JwtStrategy(jwtOptions, (jwt_payload, next) => {
     // jwt_payload should contain: { _id, userName }
@@ -81,7 +83,7 @@ app.delete("/api/user/favourites/:id",
   (req, res) => {
     userService.removeFavourite(req.user._id, req.params.id)
       .then(data => res.json(data))
-      .catch(err => res.status(500).json({ message: err }));
+      .catch(err => res.status(500).json({ message: err }));  
   }
 );
 
