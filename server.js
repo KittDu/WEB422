@@ -1,29 +1,36 @@
-const express = require('express');
-const cors = require("cors");
-const dotenv = require("dotenv");
+const jwt = require('jsonwebtoken');
 const passport = require('passport');
 const passportJWT = require('passport-jwt');
-const jwt = require('jsonwebtoken');
 
+const express = require('express');
+const app = express();
+const cors = require("cors");
+const dotenv = require("dotenv");
 dotenv.config();
 const userService = require("./user-service.js");
 
-const app = express();
 const HTTP_PORT = process.env.PORT || 8080;
 
-// Passport JWT Strategy
+app.use(express.json());
+app.use(cors());
 
-const ExtractJwt = passportJWT.ExtractJwt;
-const JwtStrategy = passportJWT.Strategy;
+// JSON Web Token Setup
+let ExtractJwt = passportJWT.ExtractJwt;
+let JwtStrategy = passportJWT.Strategy;
 
-const jwtOptions = {
-  jwtFromRequest: ExtractJwt.fromAuthHeaderWithScheme("jwt"),
-  secretOrKey: process.env.JWT_SECRET
+let jwtOptions = {
+  jwtFromRequest: ExtractJwt.fromAuthHeaderWithScheme('jwt'),
+  secretOrKey: process.env.JWT_SECRET,
 };
 
-const strategy = new JwtStrategy(jwtOptions, (jwt_payload, next) => {
+let strategy = new JwtStrategy(jwtOptions, function (jwt_payload, next) {
+  console.log('payload received', jwt_payload);
+
   if (jwt_payload) {
-    next(null, jwt_payload);
+    next(null, {
+      _id: jwt_payload._id,
+      userName: jwt_payload.userName
+    });
   } else {
     next(null, false);
   }
@@ -32,82 +39,69 @@ const strategy = new JwtStrategy(jwtOptions, (jwt_payload, next) => {
 passport.use(strategy);
 app.use(passport.initialize());
 
-// Middleware
-app.use(express.json());
-app.use(cors());
-
-// REGISTER
 app.post("/api/user/register", (req, res) => {
-  userService.registerUser(req.body)
+    userService.registerUser(req.body)
     .then((msg) => {
-      res.json({ message: msg });
-    })
-    .catch((msg) => {
-      res.status(422).json({ message: msg });
+        res.json({ "message": msg});
+
+    }).catch((msg) => {
+        res.status(422).json({ "message": msg });
     });
 });
 
-// LOGIN
 app.post("/api/user/login", (req, res) => {
-  userService.checkUser(req.body)
+    userService.checkUser(req.body)
     .then((user) => {
-      // 1. Build payload
-      const payload = {
-        _id: user._id,
-        userName: user.userName
-      };
+        //Create payload with user data
+        let payload = {
+            _id: user._id,
+            userName: user.userName,
+        };
+        //sign the token
+        let token = jwt.sign(payload, jwtOptions.secretOrKey);
 
-      // 2. Sign the token with secret from .env
-      const token = jwt.sign(payload, process.env.JWT_SECRET);
-
-      // 3. Return token in response
-      res.json({ message: "login successful", token });
-    })
-    .catch((err) => {
-      res.status(422).json({ message: err });
+        res.json({ 
+            "message": "login successful",
+            "token": token
+        });
+    }).catch(msg => {
+        res.status(422).json({ "message": msg });
     });
 });
 
-// GET FAVOURITES (PROTECTED)
-app.get(
-  "/api/user/favourites",
-  passport.authenticate('jwt', { session: false }),
-  (req, res) => {
+app.get("/api/user/favourites", passport.authenticate('jwt', {session: false }), (req, res) => {
     userService.getFavourites(req.user._id)
-      .then((data) => res.json(data))
-      .catch((err) => res.status(500).json({ message: err }));
-  }
-);
+    .then(data => {
+        res.json(data);
+    }).catch(msg => {
+        res.status(422).json({ error: msg });
+    })
 
-// ADD FAVOURITE (PROTECTED)
-app.put(
-  "/api/user/favourites/:id",
-  passport.authenticate('jwt', { session: false }),
-  (req, res) => {
+});
+
+app.put("/api/user/favourites/:id", passport.authenticate('jwt', {session: false }), (req, res) => {
     userService.addFavourite(req.user._id, req.params.id)
-      .then((data) => res.json(data))
-      .catch((err) => res.status(500).json({ message: err }));
-  }
-);
+    .then(data => {
+        res.json(data)
+    }).catch(msg => {
+        res.status(422).json({ error: msg });
+    })
+});
 
-// REMOVE FAVOURITE (PROTECTED)
-app.delete(
-  "/api/user/favourites/:id",
-  passport.authenticate('jwt', { session: false }),
-  (req, res) => {
+app.delete("/api/user/favourites/:id", passport.authenticate('jwt', {session: false }), (req, res) => {
     userService.removeFavourite(req.user._id, req.params.id)
-      .then((data) => res.json(data))
-      .catch((err) => res.status(500).json({ message: err }));
-  }
-);
+    .then(data => {
+        res.json(data)
+    }).catch(msg => {
+        res.status(422).json({ error: msg });
+    })
+});
 
 userService.connect()
-  .then(() => {
-    app.listen(HTTP_PORT, () => {
-      console.log("API listening on: " + HTTP_PORT);
-    });
-  })
-  .catch((err) => {
+.then(() => {
+    app.listen(HTTP_PORT, () => { console.log("API listening on: " + HTTP_PORT) });
+})
+.catch((err) => {
     console.log("unable to start the server: " + err);
     process.exit();
-  });
+});
