@@ -1,97 +1,114 @@
+const express = require('express');
+const cors = require("cors");
+const dotenv = require("dotenv");
 const passport = require('passport');
 const passportJWT = require('passport-jwt');
 const jwt = require('jsonwebtoken');
 
-const express = require('express');
-const app = express();
-
-const cors = require("cors");
-const dotenv = require("dotenv");
 dotenv.config();
+
 const userService = require("./user-service.js");
 
+const app = express();
 const HTTP_PORT = process.env.PORT || 8080;
 
+// Passport JWT Strategy
 
 const ExtractJwt = passportJWT.ExtractJwt;
 const JwtStrategy = passportJWT.Strategy;
 
+const jwtOptions = {
+  jwtFromRequest: ExtractJwt.fromAuthHeaderWithScheme("jwt"),
+  secretOrKey: process.env.JWT_SECRET
+};
+
 const strategy = new JwtStrategy(jwtOptions, (jwt_payload, next) => {
-    // jwt_payload should contain: { _id, userName }
-    if (jwt_payload) {
-        next(null, jwt_payload);
-    } else {
-        next(null, false);
-    }
+  if (jwt_payload) {
+    next(null, jwt_payload);
+  } else {
+    next(null, false);
+  }
 });
 
 passport.use(strategy);
 app.use(passport.initialize());
 
+// Middleware
 app.use(express.json());
 app.use(cors());
 
+// REGISTER
 app.post("/api/user/register", (req, res) => {
-    userService.registerUser(req.body)
-        .then((msg) => {
-            res.json({ "message": msg });
-        }).catch((msg) => {
-            res.status(422).json({ "message": msg });
-        });
+  userService.registerUser(req.body)
+    .then((msg) => {
+      res.json({ message: msg });
+    })
+    .catch((msg) => {
+      res.status(422).json({ message: msg });
+    });
 });
 
+// LOGIN
 app.post("/api/user/login", (req, res) => {
-    userService.checkUser(req.body)
-        .then((user) => {
-            // 1. Build payload
-            const payload = {
-                _id: user._id,
-                userName: user.userName
-            };
+  userService.checkUser(req.body)
+    .then((user) => {
+      // 1. Build payload
+      const payload = {
+        _id: user._id,
+        userName: user.userName
+      };
 
-            // 2. Sign the token
-            const token = jwt.sign(payload, process.env.JWT_SECRET);
+      // 2. Sign the token with secret from .env
+      const token = jwt.sign(payload, process.env.JWT_SECRET);
 
-            // 3. Return token in response
-            res.json({ message: "login successful", token });
-        })
-        .catch((err) => {
-            res.status(422).json({ message: err });
-        });
+      // 3. Return token in response
+      res.json({ message: "login successful", token });
+    })
+    .catch((err) => {
+      res.status(422).json({ message: err });
+    });
 });
 
-app.get("/api/user/favourites", (req, res) => {
-    passport.authenticate('jwt', { session: false }), (req, res) => {
-        userService.getFavourites(req.user._id)
-            .then(data => res.json(data))
-            .catch(err => res.status(500).json({ message: err }));
-
-    }
-});
-
-app.put("/api/user/favourites/:id",
+// GET FAVOURITES (PROTECTED)
+app.get(
+  "/api/user/favourites",
   passport.authenticate('jwt', { session: false }),
   (req, res) => {
-    userService.addFavourite(req.user._id, req.params.id)
-      .then(data => res.json(data))
-      .catch(err => res.status(500).json({ message: err }));
+    userService.getFavourites(req.user._id)
+      .then((data) => res.json(data))
+      .catch((err) => res.status(500).json({ message: err }));
   }
 );
 
-app.delete("/api/user/favourites/:id",
+// ADD FAVOURITE (PROTECTED)
+app.put(
+  "/api/user/favourites/:id",
+  passport.authenticate('jwt', { session: false }),
+  (req, res) => {
+    userService.addFavourite(req.user._id, req.params.id)
+      .then((data) => res.json(data))
+      .catch((err) => res.status(500).json({ message: err }));
+  }
+);
+
+// REMOVE FAVOURITE (PROTECTED)
+app.delete(
+  "/api/user/favourites/:id",
   passport.authenticate('jwt', { session: false }),
   (req, res) => {
     userService.removeFavourite(req.user._id, req.params.id)
-      .then(data => res.json(data))
-      .catch(err => res.status(500).json({ message: err }));  
+      .then((data) => res.json(data))
+      .catch((err) => res.status(500).json({ message: err }));
   }
 );
 
 userService.connect()
-    .then(() => {
-        app.listen(HTTP_PORT, () => { console.log("API listening on: " + HTTP_PORT) });
-    })
-    .catch((err) => {
-        console.log("unable to start the server: " + err);
-        process.exit();
+  .then(() => {
+    app.listen(HTTP_PORT, () => {
+      console.log("API listening on: " + HTTP_PORT);
     });
+  })
+  .catch((err) => {
+    console.log("unable to start the server: " + err);
+    process.exit();
+  });
